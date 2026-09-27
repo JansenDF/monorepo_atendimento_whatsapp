@@ -1,0 +1,254 @@
+{
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "WhatsApp - Boas-vindas",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-boas-vindas",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "Webhook - mensagem recebida",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "00000000-0000-4000-8000-000000000002"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const input = $input.first().json;\nconst payload = input.body ?? input;\nconst event = payload.event ?? payload;\nconst message = event.message ?? {};\nconst contact = event.contact ?? event.customer ?? {};\nconst messageText = message.text ?? message.body ?? message.content ?? '';\nconst eventType = event.eventType ?? event.type;\nconst required = ['eventId', 'companyId', 'ticketId', 'integrationId'];\nfor (const field of required) {\n  if (!event[field]) throw new Error('Evento inválido: campo obrigatório ausente: ' + field);\n}\nif (eventType !== 'message.received') throw new Error('Esperado evento message.received');\nif (!message.id) throw new Error('Evento inválido: message.id ausente');\nif (typeof contact.phone !== 'string' || !contact.phone.trim()) throw new Error('Evento inválido: contact.phone ausente');\nreturn [{ json: {\n  eventId: event.eventId,\n  eventType,\n  companyId: event.companyId,\n  ticketId: event.ticketId,\n  integrationId: event.integrationId,\n  customerId: event.customerId ?? contact.id ?? event.customer?.id ?? null,\n  customerName: contact.name ?? event.customer?.name ?? '',\n  phone: contact.phone,\n  messageId: message.id,\n  messageType: message.type ?? 'TEXT',\n  text: String(messageText),\n  qualification: event.qualification ?? null,\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000003",
+      "name": "Normalize event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://api:3001/internal/automation/customers/resolve",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "companyId",
+              "value": "={{ $node[\"Normalize event\"].json.companyId }}"
+            },
+            {
+              "name": "phone",
+              "value": "={{ $node[\"Normalize event\"].json.phone }}"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "00000000-0000-4000-8000-000000000004",
+      "name": "Localizar cliente e verificar cadastro",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const event = $('Normalize event').first().json;\nconst result = $input.first().json;\nif (result.error) throw new Error('Falha ao localizar cliente: ' + (result.error.message ?? 'erro da API'));\nreturn [{ json: {\n  ...event,\n  customerId: result.customerId ?? event.customerId,\n  customerName: result.customerName ?? event.customerName,\n  isRegistered: Boolean(result.isRegistered),\n  welcomeRequired: Boolean(result.welcomeRequired),\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000005",
+      "name": "Interpretar cadastro",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-4000-8000-000000000006",
+              "leftValue": "={{ $json.welcomeRequired }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000007",
+      "name": "Enviar somente no primeiro contato",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const data = $input.first().json;\nconst name = String(data.customerName ?? '').trim();\nconst text = data.isRegistered\n  ? (name ? 'Olá, ' + name + '! Que bom falar com você novamente. Como podemos ajudar?' : 'Olá! Que bom falar com você novamente. Como podemos ajudar?')\n  : 'Olá! Seja bem-vindo(a) ao nosso atendimento. Como podemos ajudar?';\nreturn [{ json: { ...data, outgoingText: text, idempotencyKey: 'welcome:' + data.eventId } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000008",
+      "name": "Montar boas-vindas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/automation/messages/text",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { companyId: $json.companyId, integrationId: $json.integrationId, ticketId: $json.ticketId, customerId: $json.customerId, body: $json.outgoingText, idempotencyKey: $json.idempotencyKey } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "00000000-0000-4000-8000-000000000009",
+      "name": "Enviar mensagem de boas-vindas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        180
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - mensagem recebida": {
+      "main": [
+        [
+          {
+            "node": "Normalize event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize event": {
+      "main": [
+        [
+          {
+            "node": "Localizar cliente e verificar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Localizar cliente e verificar cadastro": {
+      "main": [
+        [
+          {
+            "node": "Interpretar cadastro",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar cadastro": {
+      "main": [
+        [
+          {
+            "node": "Enviar somente no primeiro contato",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar somente no primeiro contato": {
+      "main": [
+        [
+          {
+            "node": "Montar boas-vindas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Montar boas-vindas": {
+      "main": [
+        [
+          {
+            "node": "Enviar mensagem de boas-vindas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "00000000-0000-4000-8000-000000001001",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

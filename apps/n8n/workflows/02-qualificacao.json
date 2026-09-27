@@ -1,0 +1,226 @@
+{
+  "id": "00000000-0000-4000-8000-000000000002",
+  "name": "WhatsApp - Qualificação",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-qualificacao",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000010",
+      "name": "Webhook - qualificação",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "00000000-0000-4000-8000-000000000011"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const input = $input.first().json;\nconst payload = input.body ?? input;\nconst event = payload.event ?? payload;\nconst message = event.message ?? {};\nconst contact = event.contact ?? event.customer ?? {};\nconst eventType = event.eventType ?? event.type;\nif (!['qualification.requested', 'message.received'].includes(eventType)) throw new Error('Esperado qualification.requested ou message.received');\nif (!event.eventId || !event.companyId || !event.ticketId || !event.integrationId) throw new Error('Evento de qualificação sem eventId/companyId/ticketId/integrationId');\nif (!event.customerId && !(contact.id ?? event.customer?.id)) throw new Error('Evento de qualificação sem customerId');\nif (eventType === 'message.received' && !message.id) throw new Error('Resposta sem message.id');\nif (typeof contact.phone !== 'string' || !contact.phone.trim()) throw new Error('Evento sem contact.phone');\nreturn [{ json: {\n  eventId: event.eventId,\n  eventType,\n  companyId: event.companyId,\n  ticketId: event.ticketId,\n  integrationId: event.integrationId,\n  customerId: event.customerId ?? contact.id ?? event.customer?.id,\n  customerName: contact.name ?? event.customer?.name ?? '',\n  phone: contact.phone,\n  messageId: message.id ?? null,\n  replyText: eventType === 'message.received' ? String(message.text ?? message.body ?? '') : null,\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000012",
+      "name": "Normalize qualification event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/automation/qualification/advance",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.eventId }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { eventId: $json.eventId, eventType: $json.eventType, companyId: $json.companyId, ticketId: $json.ticketId, integrationId: $json.integrationId, customerId: $json.customerId, messageId: $json.messageId, replyText: $json.replyText, fields: [\"name\", \"company\", \"interest\"] } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "00000000-0000-4000-8000-000000000013",
+      "name": "Salvar resposta e avançar qualificação",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        480,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const step = $input.first().json;\nconst original = $('Normalize qualification event').first().json;\nif (step.error) throw new Error('Falha ao salvar a qualificação: ' + (step.error.message ?? 'erro da API'));\nconst prompts = {\n  name: 'Para começar, qual é o seu nome?',\n  company: (step.customerName ?? original.customerName)\n    ? 'Obrigado, ' + String(step.customerName ?? original.customerName) + '. Qual é o nome da sua empresa?'\n    : 'Obrigado por compartilhar. Qual é o nome da sua empresa?',\n  interest: 'Qual produto ou serviço mais desperta o seu interesse?',\n};\nlet text = '';\nif (step.shouldSend === false) {\n  text = '';\n} else if (step.completed === true) {\n  text = step.completionMessage ?? 'Obrigado pelas informações! Nossa equipe dará continuidade ao seu atendimento.';\n} else if (prompts[step.nextField]) {\n  text = prompts[step.nextField];\n} else {\n  throw new Error('Resposta da API inválida: nextField deve ser name, company ou interest; ou completed=true');\n}\nreturn [{ json: {\n  ...original,\n  shouldSend: Boolean(step.shouldSend ?? text),\n  outgoingText: text,\n  idempotencyKey: step.idempotencyKey ?? ('qualification:' + original.eventId),\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000014",
+      "name": "Preparar próxima pergunta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "00000000-0000-4000-8000-000000000015",
+              "leftValue": "={{ $json.shouldSend }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Enviar pergunta ou confirmação",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/automation/messages/text",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { companyId: $json.companyId, integrationId: $json.integrationId, ticketId: $json.ticketId, customerId: $json.customerId, body: $json.outgoingText, idempotencyKey: $json.idempotencyKey } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "00000000-0000-4000-8000-000000000017",
+      "name": "Enviar próxima pergunta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        180
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - qualificação": {
+      "main": [
+        [
+          {
+            "node": "Normalize qualification event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize qualification event": {
+      "main": [
+        [
+          {
+            "node": "Salvar resposta e avançar qualificação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salvar resposta e avançar qualificação": {
+      "main": [
+        [
+          {
+            "node": "Preparar próxima pergunta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar próxima pergunta": {
+      "main": [
+        [
+          {
+            "node": "Enviar pergunta ou confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar pergunta ou confirmação": {
+      "main": [
+        [
+          {
+            "node": "Enviar próxima pergunta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "00000000-0000-4000-8000-000000001002",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

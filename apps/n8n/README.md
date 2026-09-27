@@ -1,3 +1,3 @@
 # Workflows n8n
 
-Workflows exportados e documentação de integração serão versionados aqui. Credenciais e dados de ambiente devem ser injetados na implantação, nunca exportados junto com os workflows.
+Workflows exportados e documentação de integração ficam em [`workflows/`](./workflows/README.md). Credenciais e dados de ambiente devem ser configurados na implantação, nunca exportados junto com os workflows.

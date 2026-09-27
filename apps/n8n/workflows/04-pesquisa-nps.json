@@ -1,0 +1,134 @@
+{
+  "id": "00000000-0000-4000-8000-000000000004",
+  "name": "WhatsApp - Pesquisa NPS ao encerrar ticket",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-ticket-closed-nps",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "00000000-0000-4000-8000-000000000030",
+      "name": "Webhook - ticket encerrado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "00000000-0000-4000-8000-000000000031"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const input = $input.first().json;\nconst payload = input.body ?? input;\nconst event = payload.event ?? payload;\nconst ticket = event.ticket ?? {};\nconst customer = event.customer ?? event.contact ?? {};\nconst eventType = event.eventType ?? event.type;\nif (eventType !== 'ticket.closed') throw new Error('Esperado evento ticket.closed');\nconst companyId = event.companyId ?? ticket.companyId;\nconst ticketId = event.ticketId ?? ticket.id;\nconst integrationId = event.integrationId ?? ticket.integrationId;\nconst customerId = event.customerId ?? customer.id ?? ticket.customerId;\nconst phone = customer.phone ?? event.phone ?? event.contact?.phone;\nif (!event.eventId || !companyId || !ticketId || !integrationId || !customerId || !phone) throw new Error('Evento ticket.closed sem eventId, companyId, ticketId, integrationId, customerId ou telefone');\nreturn [{ json: { eventId: event.eventId, companyId, ticketId, integrationId, customerId, phone: String(phone) } }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000032",
+      "name": "Validar evento de encerramento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const data = $input.first().json;\nconst idempotencyKey = 'nps:ticket:' + data.ticketId;\nreturn [{ json: {\n  ...data,\n  idempotencyKey,\n  outgoingText: 'Em uma escala de 0 a 10, o quanto você recomendaria nosso atendimento? Responda apenas com uma nota de 0 a 10. Obrigado!',\n} }];"
+      },
+      "id": "00000000-0000-4000-8000-000000000033",
+      "name": "Montar pergunta NPS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://api:3001/internal/automation/messages/text",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": false,
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { companyId: $json.companyId, integrationId: $json.integrationId, ticketId: $json.ticketId, customerId: $json.customerId, body: $json.outgoingText, idempotencyKey: $json.idempotencyKey } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "00000000-0000-4000-8000-000000000034",
+      "name": "Enviar pesquisa NPS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 1000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - ticket encerrado": {
+      "main": [
+        [
+          {
+            "node": "Validar evento de encerramento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar evento de encerramento": {
+      "main": [
+        [
+          {
+            "node": "Montar pergunta NPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar pergunta NPS": {
+      "main": [
+        [
+          {
+            "node": "Enviar pesquisa NPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "00000000-0000-4000-8000-000000001004",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}
