@@ -4,6 +4,7 @@ import { WhatsappCloudApiClient } from '../../src/whatsapp/whatsapp-cloud-api.cl
 import { WhatsappCredentialsCipher } from '../../src/whatsapp/whatsapp-credentials-cipher';
 import { WhatsappMediaStorageService } from '../../src/whatsapp/whatsapp-media-storage.service';
 import { WhatsappService } from '../../src/whatsapp/whatsapp.service';
+import { AiService } from '../../src/ai/ai.service';
 
 describe('WhatsappService outbound persistence', () => {
   const companyId = '0bc78439-60ed-4c02-8a40-1ca73af06402';
@@ -45,9 +46,10 @@ describe('WhatsappService outbound persistence', () => {
       decrypt: jest.fn().mockReturnValue({ accessToken: 'secret-token' }),
     } as unknown as WhatsappCredentialsCipher;
     const mediaStorage = {} as WhatsappMediaStorageService;
+    const ai = { classifyInbound: jest.fn().mockResolvedValue({ action: 'DISABLED' }) } as unknown as AiService;
 
     return {
-      service: new WhatsappService(prisma, cloudApi, credentials, mediaStorage),
+      service: new WhatsappService(prisma, cloudApi, credentials, mediaStorage, ai),
       prisma,
     };
   }
@@ -117,6 +119,7 @@ describe('WhatsappService webhook inbox', () => {
       {} as WhatsappCloudApiClient,
       {} as WhatsappCredentialsCipher,
       {} as WhatsappMediaStorageService,
+      { classifyInbound: jest.fn().mockResolvedValue({ action: 'DISABLED' }) } as unknown as AiService,
     );
 
     await service.receiveWebhook({

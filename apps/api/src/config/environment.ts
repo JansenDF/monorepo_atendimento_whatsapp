@@ -6,6 +6,8 @@ export interface ValidatedEnvironment extends Record<string, unknown> {
   DATABASE_URL: string;
   REDIS_URL?: string;
   JWT_ACCESS_SECRET?: string;
+  AI_ENABLED: boolean;
+  AI_PROVIDER?: 'OPENAI' | 'AZURE_OPENAI';
 }
 
 const runtimeEnvironments: readonly RuntimeEnvironment[] = [
@@ -71,6 +73,51 @@ export function validateEnvironment(
     }
   }
 
+  const rawAiEnabled = source.AI_ENABLED ?? 'false';
+  const aiEnabled = rawAiEnabled === true || rawAiEnabled === 'true';
+  if (rawAiEnabled !== true && rawAiEnabled !== false && rawAiEnabled !== 'true' && rawAiEnabled !== 'false') {
+    errors.push('AI_ENABLED must be true or false');
+  }
+  const rawAiProvider = source.AI_PROVIDER ?? 'OPENAI';
+  const aiProvider = rawAiProvider === 'OPENAI' || rawAiProvider === 'AZURE_OPENAI'
+    ? rawAiProvider
+    : undefined;
+  if (rawAiProvider !== undefined && !aiProvider) {
+    errors.push('AI_PROVIDER must be OPENAI or AZURE_OPENAI');
+  }
+  if (aiEnabled && aiProvider === 'OPENAI') {
+    if (typeof source.OPENAI_API_KEY !== 'string' || source.OPENAI_API_KEY.trim().length < 16) {
+      errors.push('OPENAI_API_KEY is required when AI_PROVIDER is OPENAI');
+    }
+    if (typeof source.OPENAI_MODEL !== 'string' || !source.OPENAI_MODEL.trim()) {
+      errors.push('OPENAI_MODEL is required when AI_PROVIDER is OPENAI');
+    }
+  }
+  if (aiEnabled && aiProvider === 'AZURE_OPENAI') {
+    if (typeof source.AZURE_OPENAI_API_KEY !== 'string' || source.AZURE_OPENAI_API_KEY.trim().length < 16) {
+      errors.push('AZURE_OPENAI_API_KEY is required when AI_PROVIDER is AZURE_OPENAI');
+    }
+    if (typeof source.AZURE_OPENAI_DEPLOYMENT !== 'string' || !source.AZURE_OPENAI_DEPLOYMENT.trim()) {
+      errors.push('AZURE_OPENAI_DEPLOYMENT is required when AI_PROVIDER is AZURE_OPENAI');
+    }
+    const endpoint = typeof source.AZURE_OPENAI_ENDPOINT === 'string' ? source.AZURE_OPENAI_ENDPOINT.trim() : '';
+    try {
+      const parsed = new URL(endpoint);
+      if (
+        parsed.protocol !== 'https:' ||
+        !parsed.hostname ||
+        parsed.username ||
+        parsed.password ||
+        parsed.search ||
+        parsed.hash
+      ) {
+        errors.push('AZURE_OPENAI_ENDPOINT must be a valid HTTPS URL');
+      }
+    } catch {
+      errors.push('AZURE_OPENAI_ENDPOINT must be a valid HTTPS URL');
+    }
+  }
+
   const graphApiVersion = source.WHATSAPP_GRAPH_API_VERSION;
   if (
     graphApiVersion !== undefined && graphApiVersion !== '' &&
@@ -112,6 +159,8 @@ export function validateEnvironment(
     NODE_ENV: nodeEnv,
     PORT: port,
     DATABASE_URL: databaseUrl,
+    AI_ENABLED: aiEnabled,
+    ...(aiProvider ? { AI_PROVIDER: aiProvider } : {}),
     ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     ...(typeof jwtAccessSecret === 'string' && jwtAccessSecret.length > 0
       ? { JWT_ACCESS_SECRET: jwtAccessSecret }

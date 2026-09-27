@@ -27,6 +27,16 @@ O webhook WhatsApp abre um ticket quando não há conversa ativa para o contato,
 
 `averageFirstResponseSeconds` mede a média entre a primeira mensagem recebida e a primeira mensagem enviada com sucesso para cada ticket no período. `averageHandlingSeconds` mede do `created_at` ao `closed_at` dos tickets fechados criados no período. As contagens por agente/departamento agrupam tickets criados no período pela atribuição/departamento atual; filas sem atribuição aparecem como `null`.
 
+## Atendimento por IA
+
+A classificação de mensagens do WhatsApp é desativada por padrão. Para habilitar OpenAI, configure `AI_ENABLED=true`, `AI_PROVIDER=OPENAI`, `OPENAI_API_KEY` e `OPENAI_MODEL`. Para Azure OpenAI, use `AI_PROVIDER=AZURE_OPENAI`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` e `AZURE_OPENAI_DEPLOYMENT`; o endpoint deve ser HTTPS e pode ser a URL do recurso ou já terminar em `/openai/v1`.
+
+Cadastre as respostas autorizadas pela empresa em `/ai/faqs` usando JWT de perfil `ADMIN` ou `SUPERVISOR`. A API oferece `GET`, `POST`, `GET /:faqId`, `PATCH /:faqId` e `DELETE /:faqId`; remoção desativa o registro. As FAQs e execuções são isoladas por `company_id`.
+
+Mensagens de texto recebidas são classificadas. Só há resposta automática para intenção `FAQ`, score estritamente maior que 85 e resposta que corresponda a uma resposta cadastrada pela empresa; os demais casos, solicitações de humano, falhas do provedor e mensagens sem resposta confiável permanecem na fila humana. Mídia é persistida pelo fluxo WhatsApp existente e encaminhada sem classificação multimodal.
+
+`ai_executions` persiste o prompt enviado, resposta estruturada do provedor, intenção, score percentual, resposta autorizada, provedor/modelo e resultado do fluxo. A chave única por empresa e mensagem, o estado de claim e a relação idempotente com a mensagem de saída impedem respostas repetidas em reentregas do webhook. Apply a migration with `corepack pnpm --filter @whatsapp/api db:migrate:deploy`.
+
 ## Limites desta etapa
 
 O módulo de login, emissão de JWT e refresh token ainda não está implementado. As rotas de tickets validam JWTs emitidos pelo contrato acima e falham fechadas se `JWT_ACCESS_SECRET` não estiver configurado.

@@ -105,6 +105,30 @@ enum OutboxStatus {
   FAILED
 }
 
+enum AiProvider {
+  OPENAI
+  AZURE_OPENAI
+}
+
+enum AiIntent {
+  FAQ
+  ORDER_STATUS
+  BILLING
+  COMPLAINT
+  SALES
+  HUMAN_HANDOFF
+  OTHER
+}
+
+enum AiExecutionStatus {
+  PROCESSING
+  AUTO_REPLY_PENDING
+  AUTO_REPLY_SENDING
+  AUTO_REPLIED
+  HUMAN_HANDOFF
+  FAILED
+}
+
 model Company {
   id        String   @id @default(uuid()) @db.Uuid
   name      String   @db.VarChar(160)
@@ -131,6 +155,8 @@ model Company {
   refreshTokens         RefreshToken[]
   attachments           MessageAttachment[]
   outboxEvents          OutboxEvent[]
+  aiFaqs                AiFaq[]
+  aiExecutions          AiExecution[]
 
   @@map("companies")
 }
@@ -345,6 +371,7 @@ model Ticket {
   messages   Message[]
   tags       TicketTag[]
   automationExecutions AutomationExecution[]
+  aiExecutions AiExecution[]
 
   @@unique([id, companyId])
   @@index([companyId, status, updatedAt])
@@ -364,6 +391,7 @@ model Message {
   status            MessageStatus    @default(RECEIVED)
   body              String?          @db.Text
   providerMessageId String?          @map("provider_message_id") @db.VarChar(255)
+  aiExecutionId    String?          @map("ai_execution_id") @db.Uuid
   metadata          Json             @default("{}") @db.JsonB
   createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -372,12 +400,62 @@ model Message {
   ticket  Ticket  @relation(fields: [ticketId, companyId], references: [id, companyId], onDelete: Cascade)
   author  User?   @relation("MessageAuthor", fields: [authorId, companyId], references: [id, companyId], onDelete: Restrict)
   attachments MessageAttachment[]
+  aiInputExecution AiExecution? @relation("AiInputMessage")
+  aiReplyExecution AiExecution? @relation("AiReplyMessage", fields: [aiExecutionId, companyId], references: [id, companyId], onDelete: Cascade)
 
   @@unique([id, companyId])
   @@unique([companyId, providerMessageId])
+  @@unique([companyId, aiExecutionId])
+  @@unique([aiExecutionId, companyId])
   @@index([companyId, ticketId, createdAt])
   @@index([companyId, status, createdAt])
   @@map("messages")
+}
+
+model AiFaq {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  question  String   @db.VarChar(1000)
+  answer    String   @db.VarChar(4000)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([id, companyId])
+  @@index([companyId, isActive, updatedAt])
+  @@map("ai_faqs")
+}
+
+model AiExecution {
+  id        String            @id @default(uuid()) @db.Uuid
+  companyId String            @map("company_id") @db.Uuid
+  ticketId  String            @map("ticket_id") @db.Uuid
+  messageId String            @map("message_id") @db.Uuid
+  provider  AiProvider
+  model     String            @db.VarChar(160)
+  intent    AiIntent?
+  score     Float?            @db.Real
+  prompt    String            @db.Text
+  response  String?           @db.Text
+  answer    String?           @db.Text
+  status    AiExecutionStatus @default(PROCESSING)
+  errorCode String?           @map("error_code") @db.VarChar(100)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company         Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  ticket          Ticket  @relation(fields: [ticketId, companyId], references: [id, companyId], onDelete: Cascade)
+  inboundMessage  Message @relation("AiInputMessage", fields: [messageId, companyId], references: [id, companyId], onDelete: Cascade)
+  autoReplyMessage Message? @relation("AiReplyMessage")
+
+  @@unique([id, companyId])
+  @@unique([companyId, messageId])
+  @@unique([messageId, companyId])
+  @@index([companyId, status, createdAt])
+  @@index([companyId, ticketId, createdAt])
+  @@map("ai_executions")
 }
 
 model MessageAttachment {

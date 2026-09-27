@@ -18,6 +18,7 @@ import {
   TicketStatus,
 } from '../generated/prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import { AiService } from '../ai/ai.service';
 import {
   isRecord,
   allowedPriorStatuses,
@@ -60,6 +61,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     private readonly cloudApi: WhatsappCloudApiClient,
     private readonly credentialCipher: WhatsappCredentialsCipher,
     private readonly mediaStorage: WhatsappMediaStorageService,
+    private readonly ai: AiService,
   ) {}
 
   onModuleInit(): void {
@@ -388,9 +390,24 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     type: MessageType,
     body: string | null,
     outboundMetadata: Record<string, unknown> = {},
+    aiExecutionId?: string,
   ): Promise<{ messageId: string; providerMessageId: string }> {
     if (input.companyId.length === 0 || input.ticketId.length === 0 || input.integrationId.length === 0) {
       throw new BadRequestException('A company, integration, and ticket are required to send a WhatsApp message');
+    }
+
+    if (aiExecutionId) {
+      const priorAutoReply = await this.prisma.message.findFirst({
+        where: { companyId: input.companyId, aiExecutionId, direction: MessageDirection.OUTBOUND },
+      });
+      if (priorAutoReply) {
+        if (priorAutoReply.providerMessageId) {
+          return { messageId: priorAutoReply.id, providerMessageId: priorAutoReply.providerMessageId };
+        }
+        // The Graph API may have accepted a message before the request timed out.
+        // Never send it again automatically: route the conversation to a person.
+        throw new ServiceUnavailableException('AI reply delivery is uncertain; human handoff is required');
+      }
     }
 
     const [ticket, integration] = await Promise.all([
@@ -425,6 +442,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
         type,
         status: 'QUEUED',
         body,
+        ...(aiExecutionId ? { aiExecutionId } : {}),
         metadata: { integrationId: integration.id, sendAttempts: 0, ...outboundMetadata },
       },
     });
@@ -493,6 +511,37 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
           payload: { ticketId: ticket.id, messageId: message.id },
         },
       });
+      if (aiExecutionId) {
+        await transaction.aiExecution.updateMany({
+          where: {
+            id: aiExecutionId,
+            companyId: input.companyId,
+            status: 'AUTO_REPLY_SENDING',
+          },
+          data: { status: 'AUTO_REPLIED', errorCode: null },
+        });
+        const botTicket = await transaction.ticket.updateMany({
+          where: { id: ticket.id, companyId: input.companyId, status: 'OPEN', assigneeId: null },
+          data: { status: 'BOT' },
+        });
+        if (botTicket.count === 1) {
+          await transaction.outboxEvent.create({
+            data: {
+              companyId: input.companyId,
+              aggregateType: 'ticket',
+              aggregateId: ticket.id,
+              eventType: 'ticket.status_changed',
+              idempotencyKey: `ticket.ai_bot:${aiExecutionId}`,
+              payload: {
+                ticketId: ticket.id,
+                previousStatus: 'OPEN',
+                status: 'BOT',
+                source: 'ai_faq_auto_reply',
+              },
+            },
+          });
+        }
+      }
     });
     return { messageId: message.id, providerMessageId: result.providerMessageId };
   }
@@ -533,6 +582,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
       include: { attachments: true },
     });
     let messageId = existing?.id;
+    let ticketId = existing?.ticketId;
     let attachments: Array<{ id: string; storageKey: string }> = existing?.attachments ?? [];
     if (!existing) {
       try {
@@ -686,9 +736,10 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
               select: { id: true, storageKey: true },
             });
           }
-          return { messageId: newMessage.id, attachment: attachment ? [attachment] : [] };
+          return { messageId: newMessage.id, ticketId: ticket.id, attachment: attachment ? [attachment] : [] };
         });
         messageId = created.messageId;
+        ticketId = created.ticketId;
         attachments = created.attachment;
       } catch (error) {
         if (!this.isUniqueConflict(error)) throw error;
@@ -698,6 +749,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
         });
         if (!duplicate) throw error;
         messageId = duplicate.id;
+        ticketId = duplicate.ticketId;
         attachments = duplicate.attachments;
       }
     }
@@ -738,6 +790,38 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     } else if (inbound.media) {
       this.logger.error(`WhatsApp media integration ${integration.id} has no credentials or phone number configuration`);
       throw new ServiceUnavailableException('WhatsApp media integration is not configured for media downloads');
+    }
+
+    if (messageId && ticketId && inbound.type === MessageType.TEXT && inbound.body?.trim()) {
+      const decision = await this.ai.classifyInbound({
+        companyId: integration.companyId,
+        ticketId,
+        messageId,
+        message: inbound.body,
+      });
+      if (decision.action === 'AUTO_REPLY' && await this.ai.claimAutoReply(integration.companyId, decision.executionId)) {
+        try {
+          await this.sendOutbound(
+            {
+              companyId: integration.companyId,
+              ticketId,
+              integrationId: integration.id,
+              body: decision.answer,
+              previewUrl: false,
+            },
+            { type: 'text', text: { body: decision.answer, preview_url: false } },
+            MessageType.TEXT,
+            decision.answer,
+            { source: 'ai_faq', aiExecutionId: decision.executionId },
+            decision.executionId,
+          );
+          await this.ai.recordAutoReplySent(integration.companyId, decision.executionId);
+        } catch (error) {
+          const code = this.errorCode(error);
+          await this.ai.recordAutoReplyFailure(integration.companyId, decision.executionId, code);
+          this.logger.warn(`AI reply handed off to a human (${code})`);
+        }
+      }
     }
     return 'PROCESSED';
   }

@@ -4,6 +4,7 @@ import { WhatsappCloudApiClient } from '../../src/whatsapp/whatsapp-cloud-api.cl
 import { WhatsappCredentialsCipher } from '../../src/whatsapp/whatsapp-credentials-cipher';
 import { WhatsappMediaStorageService } from '../../src/whatsapp/whatsapp-media-storage.service';
 import { WhatsappService } from '../../src/whatsapp/whatsapp.service';
+import { AiService } from '../../src/ai/ai.service';
 
 const COMPANY_ID = '0bc78439-60ed-4c02-8a40-1ca73af06402';
 const CONTACT_ID = '130301b4-e633-4768-8b99-bb58ca03da3e';
@@ -48,6 +49,7 @@ function setup(existingTicket: Record<string, unknown> | null) {
     {} as WhatsappCloudApiClient,
     {} as WhatsappCredentialsCipher,
     {} as WhatsappMediaStorageService,
+    { classifyInbound: jest.fn().mockResolvedValue({ action: 'DISABLED' }) } as unknown as AiService,
   );
   return { service, transaction };
 }

@@ -11,6 +11,8 @@ describe('validateEnvironment', () => {
       ...validSource,
       NODE_ENV: 'development',
       PORT: 3100,
+      AI_ENABLED: false,
+      AI_PROVIDER: 'OPENAI',
     });
   });
 
