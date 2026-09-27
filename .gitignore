@@ -19,6 +19,7 @@ coverage/
 *.log
 .turbo/
 .cache/
+apps/api/src/generated/prisma/
 
 # Editor and operating system files
 .DS_Store

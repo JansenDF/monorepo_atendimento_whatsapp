@@ -4,7 +4,7 @@ Monorepo da plataforma SaaS de atendimento omnichannel, automações e agentes d
 
 ## Requisitos locais
 
-- Node.js 22 (faixa aceita pelo repositório: `>=22.14.0 <25`)
+- Node.js 24 (faixa aceita pelo repositório: `>=24.0.0 <25`)
 - Corepack habilitado para ativar a versão de pnpm definida em `package.json`
 - Docker será necessário quando os serviços locais forem introduzidos na fase de infraestrutura
 
@@ -30,12 +30,12 @@ Monorepo da plataforma SaaS de atendimento omnichannel, automações e agentes d
 Os comandos de raiz delegam tarefas aos pacotes pelo Turborepo:
 
 ```sh
-pnpm install
-pnpm dev
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
+corepack pnpm install
+corepack pnpm dev
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
 ```
 
 Cada aplicação ou pacote implementável declara seus próprios scripts. Os diretórios marcados como “a iniciar” registram os limites da arquitetura; eles passam a participar das tarefas do Turborepo quando seus projetos executáveis forem adicionados nas fases correspondentes.

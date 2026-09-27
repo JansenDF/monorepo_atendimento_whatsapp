@@ -1,0 +1,556 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoleCode {
+  ADMIN
+  SUPERVISOR
+  AGENT
+}
+
+enum ContactChannel {
+  WHATSAPP
+  WEBCHAT
+  EMAIL
+  INSTAGRAM
+  FACEBOOK
+  OTHER
+}
+
+enum TicketStatus {
+  OPEN
+  PENDING
+  BOT
+  WAITING_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+  INTERNAL
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  DOCUMENT
+  AUDIO
+  VIDEO
+  LOCATION
+  TEMPLATE
+  STICKER
+  UNKNOWN
+}
+
+enum MessageStatus {
+  RECEIVED
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+enum AutomationTrigger {
+  TICKET_CREATED
+  MESSAGE_RECEIVED
+  TICKET_STATUS_CHANGED
+  CUSTOMER_CREATED
+  SCHEDULED
+}
+
+enum AutomationRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+enum IntegrationStatus {
+  ACTIVE
+  INACTIVE
+  DEGRADED
+  REVOKED
+}
+
+enum IntegrationEventStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  RETRYING
+  FAILED
+  IGNORED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  FAILED
+}
+
+model Company {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(160)
+  slug      String   @unique @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  users                 User[]
+  roles                 Role[]
+  userRoles             UserRole[]
+  rolePermissions       RolePermission[]
+  customers             Customer[]
+  contacts              Contact[]
+  tickets               Ticket[]
+  messages              Message[]
+  tags                  Tag[]
+  departments           Department[]
+  departmentMembers     DepartmentMember[]
+  ticketTags            TicketTag[]
+  automations           Automation[]
+  automationExecutions  AutomationExecution[]
+  integrations          Integration[]
+  integrationEvents     IntegrationEvent[]
+  refreshTokens         RefreshToken[]
+  attachments           MessageAttachment[]
+  outboxEvents          OutboxEvent[]
+
+  @@map("companies")
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  companyId    String    @map("company_id") @db.Uuid
+  email        String    @unique @db.VarChar(320)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  fullName     String    @map("full_name") @db.VarChar(160)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company              Company              @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  roles                UserRole[]
+  refreshTokens        RefreshToken[]
+  assignedTickets      Ticket[]             @relation("TicketAssignee")
+  authoredMessages     Message[]            @relation("MessageAuthor")
+  departmentMemberships DepartmentMember[]
+
+  @@unique([id, companyId])
+  @@index([companyId, isActive])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  code        RoleCode
+  name        String   @db.VarChar(80)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, code])
+  @@map("roles")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique @db.VarChar(120)
+  description String?  @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model UserRole {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  roleId    String   @map("role_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId, companyId], references: [id, companyId], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, userId, roleId])
+  @@index([companyId, roleId])
+  @@map("user_roles")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  roleId       String   @map("role_id") @db.Uuid
+  permissionId String   @map("permission_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  role       Role       @relation(fields: [roleId, companyId], references: [id, companyId], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model RefreshToken {
+  id            String    @id @default(uuid()) @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash") @db.VarChar(128)
+  familyId      String    @map("family_id") @db.Uuid
+  expiresAt     DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(6)
+  replacedById  String?   @map("replaced_by_id") @db.Uuid
+  ipAddress     String?   @map("ip_address") @db.Inet
+  userAgent     String?   @map("user_agent") @db.VarChar(512)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  user    User    @relation(fields: [userId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@index([companyId, userId, expiresAt])
+  @@index([familyId, revokedAt])
+  @@map("refresh_tokens")
+}
+
+model Customer {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  displayName String   @map("display_name") @db.VarChar(160)
+  email       String?  @db.VarChar(320)
+  notes       String?  @db.Text
+  metadata    Json     @default("{}") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  contacts Contact[]
+  tickets  Ticket[]
+
+  @@unique([id, companyId])
+  @@index([companyId, displayName])
+  @@index([companyId, email])
+  @@map("customers")
+}
+
+model Contact {
+  id          String         @id @default(uuid()) @db.Uuid
+  companyId   String         @map("company_id") @db.Uuid
+  customerId  String         @map("customer_id") @db.Uuid
+  channel     ContactChannel
+  address     String         @db.VarChar(320)
+  displayName String?        @map("display_name") @db.VarChar(160)
+  isPrimary   Boolean        @default(false) @map("is_primary")
+  verifiedAt  DateTime?      @map("verified_at") @db.Timestamptz(6)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId, companyId], references: [id, companyId], onDelete: Cascade)
+  tickets  Ticket[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, channel, address])
+  @@index([companyId, customerId])
+  @@map("contacts")
+}
+
+model Department {
+  id          String   @id @default(uuid()) @db.Uuid
+  companyId   String   @map("company_id") @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  members DepartmentMember[]
+  tickets Ticket[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, name])
+  @@index([companyId, isActive])
+  @@map("departments")
+}
+
+model DepartmentMember {
+  id           String   @id @default(uuid()) @db.Uuid
+  companyId    String   @map("company_id") @db.Uuid
+  departmentId String   @map("department_id") @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  department Department @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Cascade)
+  user       User       @relation(fields: [userId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, departmentId, userId])
+  @@index([companyId, userId])
+  @@map("department_members")
+}
+
+model Ticket {
+  id           String         @id @default(uuid()) @db.Uuid
+  companyId    String         @map("company_id") @db.Uuid
+  customerId   String         @map("customer_id") @db.Uuid
+  contactId    String?        @map("contact_id") @db.Uuid
+  departmentId String?        @map("department_id") @db.Uuid
+  assigneeId   String?        @map("assignee_id") @db.Uuid
+  subject      String         @db.VarChar(240)
+  status       TicketStatus   @default(OPEN)
+  priority     TicketPriority @default(NORMAL)
+  channel      ContactChannel
+  resolvedAt   DateTime?      @map("resolved_at") @db.Timestamptz(6)
+  closedAt     DateTime?      @map("closed_at") @db.Timestamptz(6)
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  customer   Customer   @relation(fields: [customerId, companyId], references: [id, companyId], onDelete: Restrict)
+  contact    Contact?   @relation(fields: [contactId, companyId], references: [id, companyId], onDelete: Restrict)
+  department Department? @relation(fields: [departmentId, companyId], references: [id, companyId], onDelete: Restrict)
+  assignee   User?      @relation("TicketAssignee", fields: [assigneeId, companyId], references: [id, companyId], onDelete: Restrict)
+  messages   Message[]
+  tags       TicketTag[]
+  automationExecutions AutomationExecution[]
+
+  @@unique([id, companyId])
+  @@index([companyId, status, updatedAt])
+  @@index([companyId, assigneeId, status])
+  @@index([companyId, departmentId, status])
+  @@index([companyId, customerId, createdAt])
+  @@map("tickets")
+}
+
+model Message {
+  id                String           @id @default(uuid()) @db.Uuid
+  companyId         String           @map("company_id") @db.Uuid
+  ticketId          String           @map("ticket_id") @db.Uuid
+  authorId          String?          @map("author_id") @db.Uuid
+  direction         MessageDirection
+  type              MessageType      @default(TEXT)
+  status            MessageStatus    @default(RECEIVED)
+  body              String?          @db.Text
+  providerMessageId String?          @map("provider_message_id") @db.VarChar(255)
+  metadata          Json             @default("{}") @db.JsonB
+  createdAt         DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  ticket  Ticket  @relation(fields: [ticketId, companyId], references: [id, companyId], onDelete: Cascade)
+  author  User?   @relation("MessageAuthor", fields: [authorId, companyId], references: [id, companyId], onDelete: Restrict)
+  attachments MessageAttachment[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, providerMessageId])
+  @@index([companyId, ticketId, createdAt])
+  @@index([companyId, status, createdAt])
+  @@map("messages")
+}
+
+model MessageAttachment {
+  id               String     @id @default(uuid()) @db.Uuid
+  companyId        String     @map("company_id") @db.Uuid
+  messageId        String     @map("message_id") @db.Uuid
+  type             MessageType
+  fileName         String?    @map("file_name") @db.VarChar(255)
+  mimeType         String     @map("mime_type") @db.VarChar(255)
+  byteSize         BigInt     @map("byte_size")
+  storageKey       String     @map("storage_key") @db.VarChar(1024)
+  checksumSha256   String?    @map("checksum_sha256") @db.Char(64)
+  providerMediaId  String?    @map("provider_media_id") @db.VarChar(255)
+  metadata         Json       @default("{}") @db.JsonB
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  message Message @relation(fields: [messageId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([id, companyId])
+  @@unique([companyId, providerMediaId])
+  @@unique([companyId, storageKey])
+  @@index([companyId, messageId, createdAt])
+  @@map("message_attachments")
+}
+
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  name      String   @db.VarChar(64)
+  color     String?  @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  tickets TicketTag[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, name])
+  @@map("tags")
+}
+
+model TicketTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  ticketId  String   @map("ticket_id") @db.Uuid
+  tagId     String   @map("tag_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  ticket  Ticket  @relation(fields: [ticketId, companyId], references: [id, companyId], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId, companyId], references: [id, companyId], onDelete: Cascade)
+
+  @@unique([companyId, ticketId, tagId])
+  @@map("ticket_tags")
+}
+
+model Automation {
+  id          String            @id @default(uuid()) @db.Uuid
+  companyId   String            @map("company_id") @db.Uuid
+  name        String            @db.VarChar(160)
+  description String?           @db.VarChar(500)
+  trigger     AutomationTrigger
+  conditions  Json              @default("[]") @db.JsonB
+  actions     Json              @default("[]") @db.JsonB
+  isActive    Boolean           @default(false) @map("is_active")
+  version     Int               @default(1)
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company   Company                @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  executions AutomationExecution[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, name])
+  @@index([companyId, isActive, trigger])
+  @@map("automations")
+}
+
+model AutomationExecution {
+  id          String             @id @default(uuid()) @db.Uuid
+  companyId   String             @map("company_id") @db.Uuid
+  automationId String            @map("automation_id") @db.Uuid
+  ticketId    String?            @map("ticket_id") @db.Uuid
+  status      AutomationRunStatus @default(QUEUED)
+  idempotencyKey String           @map("idempotency_key") @db.VarChar(255)
+  input       Json               @default("{}") @db.JsonB
+  output      Json?              @db.JsonB
+  errorCode   String?            @map("error_code") @db.VarChar(100)
+  startedAt   DateTime?          @map("started_at") @db.Timestamptz(6)
+  finishedAt  DateTime?          @map("finished_at") @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  automation Automation @relation(fields: [automationId, companyId], references: [id, companyId], onDelete: Restrict)
+  ticket     Ticket?    @relation(fields: [ticketId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([companyId, automationId, createdAt])
+  @@index([companyId, status, createdAt])
+  @@map("automation_executions")
+}
+
+model Integration {
+  id                   String            @id @default(uuid()) @db.Uuid
+  companyId            String            @map("company_id") @db.Uuid
+  provider             String            @db.VarChar(80)
+  name                 String            @db.VarChar(160)
+  status               IntegrationStatus @default(INACTIVE)
+  externalAccountId    String?           @map("external_account_id") @db.VarChar(255)
+  credentialsCiphertext Bytes?           @map("credentials_ciphertext") @db.ByteA
+  credentialsKeyVersion String?          @map("credentials_key_version") @db.VarChar(100)
+  configuration        Json              @default("{}") @db.JsonB
+  lastSyncedAt         DateTime?         @map("last_synced_at") @db.Timestamptz(6)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company            @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  events  IntegrationEvent[]
+
+  @@unique([id, companyId])
+  @@unique([companyId, provider, externalAccountId])
+  @@index([companyId, status])
+  @@map("integrations")
+}
+
+model IntegrationEvent {
+  id              String                @id @default(uuid()) @db.Uuid
+  companyId       String                @map("company_id") @db.Uuid
+  integrationId   String                @map("integration_id") @db.Uuid
+  eventType       String                @map("event_type") @db.VarChar(160)
+  idempotencyKey  String                @map("idempotency_key") @db.VarChar(255)
+  status          IntegrationEventStatus @default(RECEIVED)
+  payload         Json                  @db.JsonB
+  attemptCount    Int                   @default(0) @map("attempt_count")
+  receivedAt      DateTime              @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt     DateTime?             @map("processed_at") @db.Timestamptz(6)
+  errorCode       String?               @map("error_code") @db.VarChar(100)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  integration Integration @relation(fields: [integrationId, companyId], references: [id, companyId], onDelete: Restrict)
+
+  @@unique([companyId, integrationId, idempotencyKey])
+  @@index([companyId, status, receivedAt])
+  @@map("integration_events")
+}
+
+model OutboxEvent {
+  id             String      @id @default(uuid()) @db.Uuid
+  companyId      String      @map("company_id") @db.Uuid
+  aggregateType  String      @map("aggregate_type") @db.VarChar(80)
+  aggregateId    String      @map("aggregate_id") @db.Uuid
+  eventType      String      @map("event_type") @db.VarChar(160)
+  idempotencyKey String      @map("idempotency_key") @db.VarChar(255)
+  status         OutboxStatus @default(PENDING)
+  payload        Json        @db.JsonB
+  attemptCount   Int         @default(0) @map("attempt_count")
+  availableAt    DateTime    @default(now()) @map("available_at") @db.Timestamptz(6)
+  claimedAt      DateTime?   @map("claimed_at") @db.Timestamptz(6)
+  publishedAt    DateTime?   @map("published_at") @db.Timestamptz(6)
+  lastErrorCode  String?     @map("last_error_code") @db.VarChar(100)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Restrict)
+
+  @@unique([companyId, idempotencyKey])
+  @@index([status, availableAt, createdAt])
+  @@index([companyId, aggregateType, aggregateId, createdAt])
+  @@map("outbox_events")
+}

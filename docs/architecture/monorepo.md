@@ -40,3 +40,5 @@ O tenant é contexto obrigatório nas operações de domínio e persistência. A
 ## Evolução
 
 Cada fase adiciona implementação somente ao limite correspondente. Mudanças transversais de dependência ou propriedade de dados devem atualizar este documento. A Fase 1 prepara diretórios, manifests e configurações; não cria endpoints, schema de banco, containers ou fluxos de atendimento.
+
+O backend iniciado depois da Fase 1 mantém `companyId` nas tabelas tenant-scoped e usa chaves estrangeiras compostas para impedir referências entre empresas no próprio PostgreSQL. Isso complementa, mas não substitui, o contexto obrigatório e os filtros de tenant que serão implementados na fase de isolamento.
