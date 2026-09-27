@@ -47,6 +47,38 @@ export function validateEnvironment(
     }
   }
 
+  const graphApiVersion = source.WHATSAPP_GRAPH_API_VERSION;
+  if (
+    graphApiVersion !== undefined && graphApiVersion !== '' &&
+    (typeof graphApiVersion !== 'string' || !/^v\d+\.\d+$/.test(graphApiVersion))
+  ) {
+    errors.push('WHATSAPP_GRAPH_API_VERSION must use the Graph API format vNN.N');
+  }
+
+  const encryptionKey = source.WHATSAPP_CREDENTIALS_ENCRYPTION_KEY;
+  if (encryptionKey !== undefined && encryptionKey !== '') {
+    if (typeof encryptionKey !== 'string') {
+      errors.push('WHATSAPP_CREDENTIALS_ENCRYPTION_KEY must be a string');
+    } else {
+      const isHex = /^[0-9a-f]{64}$/i.test(encryptionKey);
+      const decoded = Buffer.from(encryptionKey, 'base64');
+      const isBase64 = decoded.length === 32 && decoded.toString('base64') === encryptionKey;
+      if (!isHex && !isBase64) {
+        errors.push('WHATSAPP_CREDENTIALS_ENCRYPTION_KEY must be a 32-byte hex or base64 value');
+      }
+    }
+  }
+
+  const storageBucket = source.WHATSAPP_MEDIA_S3_BUCKET;
+  const storageAccessKey = source.WHATSAPP_MEDIA_S3_ACCESS_KEY_ID;
+  const storageSecret = source.WHATSAPP_MEDIA_S3_SECRET_ACCESS_KEY;
+  if ((storageAccessKey && !storageSecret) || (!storageAccessKey && storageSecret)) {
+    errors.push('WhatsApp media S3 access key and secret must be configured together');
+  }
+  if (storageBucket !== undefined && storageBucket !== '' && (typeof storageBucket !== 'string' || !storageBucket.trim())) {
+    errors.push('WHATSAPP_MEDIA_S3_BUCKET must be a non-empty bucket name');
+  }
+
   if (errors.length > 0 || !nodeEnv) {
     throw new Error(`Invalid environment configuration: ${errors.join('; ')}`);
   }

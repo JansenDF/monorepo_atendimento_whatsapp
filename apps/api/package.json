@@ -18,6 +18,7 @@
     "db:migrate:status": "prisma migrate status --config prisma7.config.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1141.0",
     "@nestjs/common": "11.2.5",
     "@nestjs/config": "4.0.2",
     "@nestjs/core": "11.2.5",

@@ -503,6 +503,7 @@ model Integration {
 
   @@unique([id, companyId])
   @@unique([companyId, provider, externalAccountId])
+  @@index([provider, externalAccountId, status])
   @@index([companyId, status])
   @@map("integrations")
 }
