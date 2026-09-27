@@ -4,6 +4,7 @@ export interface ValidatedEnvironment extends Record<string, unknown> {
   NODE_ENV: RuntimeEnvironment;
   PORT: number;
   DATABASE_URL: string;
+  JWT_ACCESS_SECRET?: string;
 }
 
 const runtimeEnvironments: readonly RuntimeEnvironment[] = [
@@ -44,6 +45,13 @@ export function validateEnvironment(
       }
     } catch {
       errors.push('DATABASE_URL must be a valid URL');
+    }
+  }
+
+  const jwtAccessSecret = source.JWT_ACCESS_SECRET;
+  if (jwtAccessSecret !== undefined && jwtAccessSecret !== '') {
+    if (typeof jwtAccessSecret !== 'string' || Buffer.byteLength(jwtAccessSecret, 'utf8') < 32) {
+      errors.push('JWT_ACCESS_SECRET must contain at least 32 bytes');
     }
   }
 
@@ -88,5 +96,8 @@ export function validateEnvironment(
     NODE_ENV: nodeEnv,
     PORT: port,
     DATABASE_URL: databaseUrl,
+    ...(typeof jwtAccessSecret === 'string' && jwtAccessSecret.length > 0
+      ? { JWT_ACCESS_SECRET: jwtAccessSecret }
+      : {}),
   };
 }

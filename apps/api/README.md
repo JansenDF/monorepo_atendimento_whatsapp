@@ -15,9 +15,21 @@ O catálogo de permissões é global; papéis e associações permanecem vincula
 
 Mensagens guardam metadados de anexos e chaves de objeto; arquivos binários ficam em armazenamento privado de objetos. `outbox_events` é a base para publicar eventos depois do commit da transação; payloads devem conter referências e dados mínimos, sem cópia de conteúdo de conversa.
 
+## Tickets
+
+O módulo expõe `GET /tickets`, `GET /tickets/:ticketId`, `PATCH /tickets/:ticketId/status`, `POST /tickets/:ticketId/close`, `POST /tickets/:ticketId/reopen`, `POST /tickets/:ticketId/assume`, `POST /tickets/:ticketId/transfer` e `GET /tickets/metrics`. Listagem aceita filtros `status`, `assigneeId`, `departmentId`, `page` e `pageSize`. Métricas aceitam `from` e `to` ISO-8601; o padrão é os últimos 30 dias e o intervalo máximo é 366 dias.
+
+Rotas de tickets exigem `Authorization: Bearer <JWT>` assinado com HS256 usando `JWT_ACCESS_SECRET`. O token precisa conter `sub` (UUID do usuário), `companyId` (UUID da empresa) e `exp` (epoch em segundos). A cada request, a API confirma usuário ativo, associação à empresa e papéis no PostgreSQL; perfil e empresa nunca são confiados ao corpo da requisição. Configure um segredo aleatório de pelo menos 32 bytes. Login e emissão/refresh de tokens são responsabilidade do módulo Auth, ainda pendente.
+
+ADMIN e SUPERVISOR podem consultar todos os tickets da própria empresa, ver métricas e transferir tickets. AGENT só consulta tickets atribuídos a si ou disponíveis em suas filas/departamentos, pode assumir tickets elegíveis e atuar nos tickets que pode acessar. Mutações concorrentes usam atualização condicional e registram eventos transacionais em `outbox_events`.
+
+O webhook WhatsApp abre um ticket quando não há conversa ativa para o contato, serializa a criação por empresa/contato para evitar tickets duplicados e registra `ticket.created` no outbox. Uma resposta do cliente reabre tickets `PENDING` ou `WAITING_CUSTOMER`. O histórico e relacionamentos já estão no schema inicial, por isso esta entrega não exige migration nova.
+
+`averageFirstResponseSeconds` mede a média entre a primeira mensagem recebida e a primeira mensagem enviada com sucesso para cada ticket no período. `averageHandlingSeconds` mede do `created_at` ao `closed_at` dos tickets fechados criados no período. As contagens por agente/departamento agrupam tickets criados no período pela atribuição/departamento atual; filas sem atribuição aparecem como `null`.
+
 ## Limites desta etapa
 
-Esta etapa cria bootstrap, validação de ambiente, módulo Prisma e schema/migration dos domínios. Login/refresh, RBAC aplicado aos requests, CRUD, DTOs e repositórios de negócio entram nas fases Auth, Multi-tenant e Tickets.
+O módulo de login, emissão de JWT e refresh token ainda não está implementado. As rotas de tickets validam JWTs emitidos pelo contrato acima e falham fechadas se `JWT_ACCESS_SECRET` não estiver configurado.
 # WhatsApp Cloud API
 
 The API exposes `GET /whatsapp/webhook` for Meta's subscription handshake and

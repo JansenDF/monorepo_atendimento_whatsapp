@@ -557,6 +557,12 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
             });
           }
 
+          // Serialize ticket lookup/creation per tenant and contact so concurrent
+          // webhook deliveries cannot create two active conversations.
+          await transaction.$queryRaw`
+            SELECT pg_advisory_xact_lock(hashtextextended(${integration.companyId} || ':' || ${contact.id}, 0))
+          `;
+
           let ticket = await transaction.ticket.findFirst({
             where: {
               companyId: integration.companyId,
@@ -576,6 +582,50 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
                 status: 'OPEN',
               },
             });
+            await transaction.outboxEvent.create({
+              data: {
+                companyId: integration.companyId,
+                aggregateType: 'ticket',
+                aggregateId: ticket.id,
+                eventType: 'ticket.created',
+                idempotencyKey: `ticket.created:${ticket.id}`,
+                payload: {
+                  ticketId: ticket.id,
+                  customerId: ticket.customerId,
+                  contactId: ticket.contactId,
+                  channel: 'WHATSAPP',
+                  source: 'whatsapp_webhook',
+                },
+              },
+            });
+          } else if (ticket.status === 'PENDING' || ticket.status === 'WAITING_CUSTOMER') {
+            const previousStatus = ticket.status;
+            const reopened = await transaction.ticket.updateMany({
+              where: {
+                id: ticket.id,
+                companyId: integration.companyId,
+                status: previousStatus,
+              },
+              data: { status: 'OPEN', closedAt: null },
+            });
+            if (reopened.count === 1) {
+              ticket = { ...ticket, status: 'OPEN', closedAt: null };
+              await transaction.outboxEvent.create({
+                data: {
+                  companyId: integration.companyId,
+                  aggregateType: 'ticket',
+                  aggregateId: ticket.id,
+                  eventType: 'ticket.status_changed',
+                  idempotencyKey: `ticket.customer_replied:${inbound.providerMessageId}`,
+                  payload: {
+                    ticketId: ticket.id,
+                    previousStatus,
+                    status: 'OPEN',
+                    source: 'whatsapp_webhook',
+                  },
+                },
+              });
+            }
           }
 
           const newMessage = await transaction.message.create({
