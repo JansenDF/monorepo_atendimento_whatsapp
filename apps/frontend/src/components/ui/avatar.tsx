@@ -10,7 +10,10 @@ interface AvatarProps {
 export function Avatar({ name, imageUrl, className, fallbackClassName }: AvatarProps) {
   return (
     <span className={cn('relative inline-flex size-10 shrink-0 overflow-hidden rounded-full bg-primary/10 text-primary', className)}>
-      {imageUrl ? <img alt="" className="size-full object-cover" src={imageUrl} /> : null}
+      {imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- Avatar URLs come from tenant storage without a fixed remote host allowlist.
+        <img alt="" className="size-full object-cover" src={imageUrl} />
+      ) : null}
       {!imageUrl ? (
         <span className={cn('flex size-full items-center justify-center text-xs font-semibold', fallbackClassName)}>
           {initials(name) || '?'}

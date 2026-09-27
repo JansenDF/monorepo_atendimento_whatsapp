@@ -4,9 +4,10 @@ Painel Next.js responsivo para atendimento omnichannel. A aplicação usa App Ro
 
 ## Desenvolvimento local
 
-1. Copie `.env.example` para `.env.local` na pasta `apps/frontend`.
-2. Na raiz do monorepo, execute `corepack pnpm install`.
-3. Inicie o painel com `corepack pnpm --filter @whatsapp/frontend dev`.
+1. Rode `corepack enable` uma vez para criar os shims pnpm usados pelo Turborepo.
+2. Copie `.env.example` para `.env.local` na pasta `apps/frontend`.
+3. Na raiz do monorepo, execute `corepack pnpm install`.
+4. Inicie o painel com `corepack pnpm --filter @whatsapp/frontend dev`.
 
 O painel espera a API em `http://localhost:3001`. `NEXT_PUBLIC_SOCKET_URL` define a origem do Socket.IO. O modo de demonstração é local e sintético: habilite `NEXT_PUBLIC_DEMO_MODE=true` somente no servidor de desenvolvimento para explorar as telas sem API. Ele é deliberadamente desativado em produção.
 
@@ -25,3 +26,7 @@ Tokens de acesso são mantidos apenas em memória. A restauração de sessão us
 O painel consome `GET /tickets`, `GET /tickets/:id`, `GET /tickets/metrics`, `POST /tickets/:id/{close,reopen,assume,transfer}` e envia mensagens pelo contrato esperado `POST /tickets/:id/messages`. A API atual implementa consultas, métricas e ações de ticket, mas ainda não oferece rotas de login/refresh/logout, mensagens, clientes, usuários/agentes ou departamentos, nem eventos Socket.IO. As telas mostram estados de erro quando essas rotas não estão disponíveis; o modo de demonstração não substitui a persistência da API.
 
 As métricas do dashboard são consultadas apenas para perfis `ADMIN` e `SUPERVISOR`, conforme o RBAC da API atual. Agentes continuam vendo a fila e a contagem total de tickets por situação. A transferência fica disponível para administradores e supervisores; assumir ticket fica disponível para agentes.
+
+## Qualidade
+
+Execute `corepack pnpm --filter @whatsapp/frontend lint`, `typecheck` e `test` para validar Next/React, TypeScript e schemas Zod. `test:e2e` roda smoke tests Playwright sobre o build de produção; instale Chromium com `corepack pnpm exec playwright install chromium`. A verificação completa do workspace é `corepack pnpm check`; o fluxo e os limites atuais estão em `docs/development/quality-and-feature-workflow.md`.

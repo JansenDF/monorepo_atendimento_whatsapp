@@ -2,8 +2,8 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Check, CheckCheck, Circle, Clock3, Headphones, LoaderCircle, MessageSquare, Paperclip, Send, SlidersHorizontal, UserRound, UsersRound, Wifi, WifiOff } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useForm, useWatch } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Avatar } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,15 @@ const filters: Array<{ value: TicketStatus | 'ALL'; label: string }> = [
   { value: 'WAITING_CUSTOMER', label: 'Aguardando' }, { value: 'CLOSED', label: 'Encerradas' },
 ];
 
+function subscribeToLocation(onChange: () => void) {
+  window.addEventListener('popstate', onChange);
+  return () => window.removeEventListener('popstate', onChange);
+}
+
+function getTicketIdFromLocation() {
+  return new URLSearchParams(window.location.search).get('ticket') ?? undefined;
+}
+
 function TicketRow({ ticket, active, onClick }: { ticket: Ticket; active: boolean; onClick: () => void }) {
   const lastMessage = ticket.messages?.at(-1);
   return (
@@ -43,7 +52,7 @@ function TicketRow({ ticket, active, onClick }: { ticket: Ticket; active: boolea
 function TransferDialog({ ticket, open, onOpenChange }: { ticket: Ticket | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const departments = useDepartments(open);
   const form = useForm<TransferValues>({ resolver: zodResolver(transferSchema), defaultValues: { departmentId: ticket?.department?.id ?? '', assigneeId: '' } });
-  const departmentId = form.watch('departmentId');
+  const departmentId = useWatch({ control: form.control, name: 'departmentId' });
   const agents = useAgents(departmentId, open && Boolean(departmentId));
   const mutation = useTransferTicket();
   useEffect(() => { form.reset({ departmentId: ticket?.department?.id ?? '', assigneeId: '' }); }, [form, ticket?.id, ticket?.department?.id, open]);
@@ -67,22 +76,13 @@ function TransferDialog({ ticket, open, onOpenChange }: { ticket: Ticket | null;
 
 export default function TicketsPage() {
   const [filter, setFilter] = useState<TicketStatus | 'ALL'>('ALL');
-  const [selectedId, setSelectedId] = useState<string | undefined>();
-  const [initialSelectionSet, setInitialSelectionSet] = useState(false);
+  const [selectionOverride, setSelectionOverride] = useState<{ id?: string } | null>(null);
+  const requestedTicketId = useSyncExternalStore(subscribeToLocation, getTicketIdFromLocation, () => undefined);
   const [transferOpen, setTransferOpen] = useState(false);
   const [search, setSearch] = useState('');
   const list = useTickets({ pageSize: 50, ...(filter !== 'ALL' ? { status: filter } : {}) });
-  const tickets = list.data?.items ?? [];
-  useEffect(() => {
-    const wanted = new URLSearchParams(window.location.search).get('ticket');
-    if (wanted && !initialSelectionSet) {
-      setSelectedId(wanted);
-      setInitialSelectionSet(true);
-    } else if (!initialSelectionSet && tickets.length) {
-      setSelectedId(tickets[0]!.id);
-      setInitialSelectionSet(true);
-    }
-  }, [initialSelectionSet, tickets]);
+  const tickets = useMemo(() => list.data?.items ?? [], [list.data?.items]);
+  const selectedId = selectionOverride === null ? requestedTicketId ?? tickets[0]?.id : selectionOverride.id;
   const detail = useTicket(selectedId);
   const selected = detail.data ?? tickets.find((ticket) => ticket.id === selectedId) ?? null;
   const connection = useTicketRealtime(selectedId);
@@ -94,6 +94,7 @@ export default function TicketsPage() {
   const canTransfer = Boolean(user?.roles.some((role) => role === 'ADMIN' || role === 'SUPERVISOR'));
   const canAssume = Boolean(user?.roles.includes('AGENT'));
   const form = useForm<MessageValues>({ resolver: zodResolver(messageSchema), defaultValues: { body: '' } });
+  const messageBody = useWatch({ control: form.control, name: 'body' });
   const filteredTickets = useMemo(() => {
     const value = search.trim().toLocaleLowerCase('pt-BR');
     return tickets.filter((ticket) => !value || ticket.customer.displayName.toLocaleLowerCase('pt-BR').includes(value) || ticket.subject.toLocaleLowerCase('pt-BR').includes(value));
@@ -123,13 +124,13 @@ export default function TicketsPage() {
           <div aria-label="Filtrar conversas por situação" className="scrollbar-subtle mt-3 flex gap-1 overflow-x-auto pb-1">{filters.map((item) => <button aria-pressed={filter === item.value} className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${filter === item.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`} key={item.value} onClick={() => setFilter(item.value)} type="button">{item.label}</button>)}</div>
         </div>
         <div className="scrollbar-subtle min-h-0 flex-1 overflow-y-auto" role="list">
-          {list.isLoading ? [1, 2, 3, 4].map((i) => <div className="flex gap-3 border-b border-border p-4" key={i}><Skeleton className="size-10 rounded-full" /><div className="flex-1 space-y-2"><Skeleton className="h-3 w-2/3" /><Skeleton className="h-3 w-full" /></div></div>) : list.error ? <div className="p-5 text-sm text-destructive">Não foi possível carregar as conversas. {list.error.message}</div> : filteredTickets.length ? filteredTickets.map((ticket) => <TicketRow active={selectedId === ticket.id} key={ticket.id} onClick={() => setSelectedId(ticket.id)} ticket={ticket} />) : <div className="px-5 py-12 text-center text-sm text-muted-foreground">Nenhuma conversa encontrada.</div>}
+          {list.isLoading ? [1, 2, 3, 4].map((i) => <div className="flex gap-3 border-b border-border p-4" key={i}><Skeleton className="size-10 rounded-full" /><div className="flex-1 space-y-2"><Skeleton className="h-3 w-2/3" /><Skeleton className="h-3 w-full" /></div></div>) : list.error ? <div className="p-5 text-sm text-destructive">Não foi possível carregar as conversas. {list.error.message}</div> : filteredTickets.length ? filteredTickets.map((ticket) => <TicketRow active={selectedId === ticket.id} key={ticket.id} onClick={() => setSelectionOverride({ id: ticket.id })} ticket={ticket} />) : <div className="px-5 py-12 text-center text-sm text-muted-foreground">Nenhuma conversa encontrada.</div>}
         </div>
       </aside>
 
       <section className={`flex min-w-0 flex-col ${!selected ? 'hidden lg:flex' : 'flex'}`}>
         {selected ? <>
-          <header className="flex min-h-[72px] items-center gap-3 border-b border-border px-4 sm:px-5"><Button aria-label="Voltar à lista" className="lg:hidden" onClick={() => setSelectedId(undefined)} size="icon-sm" variant="ghost">←</Button><Avatar className="size-10" name={selected.customer.displayName} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-sm font-semibold">{selected.customer.displayName}</h2><StatusBadge status={selected.status} /></div><p className="mt-1 truncate text-xs text-muted-foreground">{selected.contact?.address ?? selected.subject}</p></div>
+          <header className="flex min-h-[72px] items-center gap-3 border-b border-border px-4 sm:px-5"><Button aria-label="Voltar à lista" className="lg:hidden" onClick={() => setSelectionOverride({})} size="icon-sm" variant="ghost">←</Button><Avatar className="size-10" name={selected.customer.displayName} /><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="truncate text-sm font-semibold">{selected.customer.displayName}</h2><StatusBadge status={selected.status} /></div><p className="mt-1 truncate text-xs text-muted-foreground">{selected.contact?.address ?? selected.subject}</p></div>
             {selected.status !== 'CLOSED' ? <>{canTransfer ? <Button aria-label="Transferir conversa" className="hidden sm:inline-flex" onClick={() => setTransferOpen(true)} size="sm" variant="outline"><UsersRound /> Transferir</Button> : null}<Button aria-label="Encerrar conversa" className="hidden sm:inline-flex" disabled={close.isPending} onClick={() => void runAction('close')} size="sm" variant="outline"><Check /> Encerrar</Button><Button aria-label="Encerrar conversa" className="sm:hidden" disabled={close.isPending} onClick={() => void runAction('close')} size="icon-sm" variant="outline"><Check /></Button></> : <><Button className="hidden sm:inline-flex" disabled={reopen.isPending} onClick={() => void runAction('reopen')} size="sm" variant="outline">Reabrir</Button><Button aria-label="Reabrir conversa" className="sm:hidden" disabled={reopen.isPending} onClick={() => void runAction('reopen')} size="icon-sm" variant="outline"><Check /></Button></>}
             {selected.status !== 'CLOSED' && canTransfer ? <Button aria-label="Transferir conversa" className="sm:hidden" onClick={() => setTransferOpen(true)} size="icon-sm" variant="ghost"><UsersRound /></Button> : null}
             {selected.status !== 'CLOSED' && canAssume && !selected.assignee ? <Button aria-label="Assumir conversa" className="sm:hidden" disabled={assume.isPending} onClick={() => void runAction('assume')} size="icon-sm" variant="ghost"><UserRound /></Button> : null}
@@ -150,7 +151,7 @@ export default function TicketsPage() {
           <div className="border-t border-border bg-card p-3 sm:p-4">
             {selected.status === 'CLOSED' ? <div className="flex items-center justify-between rounded-xl bg-muted px-4 py-3"><p className="text-sm text-muted-foreground">Esta conversa está encerrada.</p><Button onClick={() => void runAction('reopen')} size="sm">Reabrir conversa</Button></div> : <form onSubmit={submitMessage}>
               <div className="rounded-2xl border border-input bg-background p-2 focus-within:ring-2 focus-within:ring-ring/30"><Textarea aria-label="Escreva uma mensagem" className="min-h-[66px] resize-none border-0 bg-transparent px-2 py-1 shadow-none focus-visible:ring-0" disabled={send.isPending} placeholder="Escreva sua resposta..." {...form.register('body')} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void submitMessage(); } }} />
-                <div className="flex items-center justify-between px-1 pt-1"><div className="flex items-center gap-1"><Button aria-label="Anexar arquivo" onClick={() => toast.info('Envio de anexos será liberado quando a API disponibilizar esse fluxo.')} size="icon-sm" type="button" variant="ghost"><Paperclip /></Button><span className="hidden text-[10px] text-muted-foreground sm:block">Enter para enviar · Shift + Enter para nova linha</span></div><Button aria-label="Enviar mensagem" disabled={send.isPending || !form.watch('body')?.trim()} size="sm" type="submit">{send.isPending ? <LoaderCircle className="animate-spin" /> : <Send />} Enviar</Button></div>
+                <div className="flex items-center justify-between px-1 pt-1"><div className="flex items-center gap-1"><Button aria-label="Anexar arquivo" onClick={() => toast.info('Envio de anexos será liberado quando a API disponibilizar esse fluxo.')} size="icon-sm" type="button" variant="ghost"><Paperclip /></Button><span className="hidden text-[10px] text-muted-foreground sm:block">Enter para enviar · Shift + Enter para nova linha</span></div><Button aria-label="Enviar mensagem" disabled={send.isPending || !messageBody?.trim()} size="sm" type="submit">{send.isPending ? <LoaderCircle className="animate-spin" /> : <Send />} Enviar</Button></div>
               </div>{form.formState.errors.body ? <p className="mt-1 text-xs text-destructive">{form.formState.errors.body.message}</p> : null}
             </form>}
           </div>

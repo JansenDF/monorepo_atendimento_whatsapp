@@ -2,7 +2,7 @@
 
 import { Bell, Check, ChevronRight, Globe2, Laptop, Moon, Palette, ShieldCheck, Sun, UserRound, Wifi } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import { useEffect, useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { toast } from 'sonner';
 import { PageHeading } from '@/components/page-heading';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -16,6 +16,20 @@ import { isDemoMode } from '@/lib/demo-mode';
 type Preferences = { newTickets: boolean; assignedTickets: boolean; sound: boolean };
 const preferenceDefaults: Preferences = { newTickets: true, assignedTickets: true, sound: false };
 
+function readPreferences(): Preferences {
+  if (typeof window === 'undefined') return preferenceDefaults;
+  try {
+    const value = window.localStorage.getItem('atende:preferences');
+    return value ? { ...preferenceDefaults, ...JSON.parse(value) as Partial<Preferences> } : preferenceDefaults;
+  } catch {
+    return preferenceDefaults;
+  }
+}
+
+function subscribeToHydration() {
+  return () => {};
+}
+
 function PreferenceToggle({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (value: boolean) => void }) {
   return <label className="flex cursor-pointer items-center justify-between gap-4 py-3"><span><span className="block text-sm font-medium">{label}</span><span className="mt-1 block text-xs text-muted-foreground">{description}</span></span><span className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? 'bg-primary' : 'bg-muted-foreground/30'}`}><input aria-label={label} checked={checked} className="peer sr-only" onChange={(event) => onChange(event.target.checked)} type="checkbox" /><span className={`absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : ''}`} /></span></label>;
 }
@@ -23,15 +37,8 @@ function PreferenceToggle({ label, description, checked, onChange }: { label: st
 export default function SettingsPage() {
   const user = useAuthStore((state) => state.user);
   const { theme, setTheme } = useTheme();
-  const [preferences, setPreferences] = useState<Preferences>(preferenceDefaults);
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    try {
-      const value = window.localStorage.getItem('atende:preferences');
-      if (value) setPreferences({ ...preferenceDefaults, ...JSON.parse(value) as Partial<Preferences> });
-    } catch { /* Invalid local preferences fall back to defaults. */ }
-    setReady(true);
-  }, []);
+  const [preferences, setPreferences] = useState<Preferences>(readPreferences);
+  const ready = useSyncExternalStore(subscribeToHydration, () => true, () => false);
   const updatePreference = (key: keyof Preferences, value: boolean) => {
     const next = { ...preferences, [key]: value };
     setPreferences(next);

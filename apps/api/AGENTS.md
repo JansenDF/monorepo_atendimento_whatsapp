@@ -38,5 +38,5 @@ Estas regras complementam o `AGENTS.md` da raiz e se aplicam a `apps/api/`.
 
 - Coloque testes Jest próximos às convenções de `test/` e use `@nestjs/testing` quando fizer sentido.
 - Teste regras e cenários de tenant, autorização, idempotência, falhas e estados relevantes; mocks não substituem testes de integração quando a garantia depende do PostgreSQL ou do contrato externo.
-- Os scripts atuais da API estão em `apps/api/package.json`. Confirme-os antes de executar; não presuma a existência de lint ou e2e específico da API.
+- A API possui tarefas `lint`, `typecheck`, `test`, `test:cov` e `db:validate` em `apps/api/package.json`. A qualidade completa do workspace é `corepack pnpm check`; veja `docs/development/quality-and-feature-workflow.md` para exemplos e limites da cobertura.
 - Ao relatar a entrega, separe verificações executadas das não executadas e registre limitações como migration não aplicada a um banco local.

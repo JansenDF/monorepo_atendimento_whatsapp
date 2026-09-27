@@ -31,6 +31,8 @@ Antes de alterar código, explique brevemente o problema, a solução proposta, 
 
 - Valide entradas nas fronteiras da aplicação e mantenha regras de domínio fora de DTOs e controllers.
 - Adicione testes automatizados para comportamento novo ou alterado, de acordo com o escopo e as ferramentas existentes. Não declare validações como executadas se não foram executadas; informe comandos, resultados e limitações relevantes.
+- Use `corepack pnpm check` como validação local completa e antes de solicitar revisão. Ele executa lint, typecheck, Prisma schema validation, unit tests, build e smoke tests Playwright; detalhes e comandos por app estão em `docs/development/quality-and-feature-workflow.md`.
+- Não reduza thresholds de coverage para fazer a pipeline passar. O piso atual da API é um gate de regressão, não a meta de 80%; amplie testes e eleve o piso até cumprir a meta.
 - Prefira logs estruturados, erros observáveis e operações idempotentes para processamento assíncrono e webhooks.
 - Não edite código gerado, dependências instaladas ou arquivos de build. Não adicione dependências sem necessidade e compatibilidade verificadas.
 - Mantenha migrations versionadas e aditivas. Não altere migrations já aplicadas em ambientes compartilhados; crie uma nova migration para correções de schema.
@@ -39,4 +41,4 @@ Antes de alterar código, explique brevemente o problema, a solução proposta, 
 
 ## Comandos
 
-Os comandos de raiz definidos atualmente incluem `corepack pnpm dev`, `build`, `lint`, `typecheck`, `test` e `test:e2e`. Cada pacote pode oferecer apenas parte deles; confirme os scripts disponíveis no `package.json` do pacote antes de executar. A API usa Node.js 24 e Prisma ORM 7; veja `apps/api/README.md` para configuração e comandos de banco.
+Os comandos de raiz incluem `corepack pnpm dev`, `build`, `lint`, `typecheck`, `test`, `test:e2e` e `check`. `check` é a porta de qualidade completa; confirme scripts locais no `package.json` do pacote antes de executá-los isoladamente. A API usa Node.js 24 e Prisma ORM 7; veja `apps/api/README.md` e `docs/development/quality-and-feature-workflow.md` para configuração, testes e comandos de banco.

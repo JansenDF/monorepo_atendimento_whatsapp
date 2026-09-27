@@ -56,7 +56,7 @@ export default function CustomersPage() {
   }, [search]);
   const query = useCustomers(searchTerm, page);
   const detailQuery = useCustomer(selectedId);
-  const customers = query.data?.items ?? [];
+  const customers = useMemo(() => query.data?.items ?? [], [query.data?.items]);
   const detail = detailQuery.data;
   const counts = useMemo(() => ({ total: query.data?.total ?? 0, whatsapp: customers.filter((customer) => customer.contacts.some((contact) => contact.channel === 'WHATSAPP')).length }), [customers, query.data?.total]);
 

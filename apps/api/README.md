@@ -40,6 +40,10 @@ Mensagens de texto recebidas são classificadas. Só há resposta automática pa
 ## Limites desta etapa
 
 O módulo de login, emissão de JWT e refresh token ainda não está implementado. As rotas de tickets validam JWTs emitidos pelo contrato acima e falham fechadas se `JWT_ACCESS_SECRET` não estiver configurado.
+
+## Qualidade
+
+`corepack pnpm --filter @whatsapp/api lint`, `typecheck`, `test` e `test:cov` verificam lint, TypeScript e Jest; `db:validate` valida o schema Prisma. `corepack pnpm check` executa a pipeline local completa, incluindo frontend, build e smoke tests de navegador. Consulte `docs/development/quality-and-feature-workflow.md` para migrations, integração contínua e limites de cobertura. O gate de coverage da API evita queda abaixo do baseline atual; a meta de 80% ainda não foi alcançada.
 # WhatsApp Cloud API
 
 The API exposes `GET /whatsapp/webhook` for Meta's subscription handshake and

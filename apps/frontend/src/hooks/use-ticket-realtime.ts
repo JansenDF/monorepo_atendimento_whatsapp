@@ -23,7 +23,7 @@ export function useTicketRealtime(ticketId?: string): ConnectionState {
   const queryClient = useQueryClient();
   const socketRef = useRef<Socket | null>(null);
   const selectedTicketRef = useRef(ticketId);
-  const [state, setState] = useState<ConnectionState>(isDemoMode ? 'demo' : 'disconnected');
+  const [state, setState] = useState<ConnectionState>('disconnected');
 
   useEffect(() => {
     const previousTicketId = selectedTicketRef.current;
@@ -35,14 +35,7 @@ export function useTicketRealtime(ticketId?: string): ConnectionState {
   }, [ticketId]);
 
   useEffect(() => {
-    if (isDemoMode) {
-      setState('demo');
-      return;
-    }
-    if (!token) {
-      setState('disconnected');
-      return;
-    }
+    if (isDemoMode || !token) return;
 
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
     const socket: Socket = io(socketUrl, {
@@ -58,7 +51,6 @@ export function useTicketRealtime(ticketId?: string): ConnectionState {
       timeout: 20_000,
     });
     socketRef.current = socket;
-    setState('connecting');
 
     const invalidateTicketLists = () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.ticketLists });
@@ -98,5 +90,7 @@ export function useTicketRealtime(ticketId?: string): ConnectionState {
     };
   }, [queryClient, token]);
 
-  return state;
+  if (isDemoMode) return 'demo';
+  if (!token) return 'disconnected';
+  return state === 'connected' ? 'connected' : 'connecting';
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AiProviderConfiguration, AI_INTENTS, AiIntent, AiProvider, ClassificationResult, ManagedPrompt } from './ai.types';
+import { AiProviderConfiguration, AI_INTENTS, AiIntent, ClassificationResult, ManagedPrompt } from './ai.types';
 
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_RESPONSE_CHARACTERS = 16_000;

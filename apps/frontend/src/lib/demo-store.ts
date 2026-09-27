@@ -78,7 +78,7 @@ function message(id: string, direction: TicketMessage['direction'], body: string
   };
 }
 
-let tickets: Ticket[] = [
+const tickets: Ticket[] = [
   {
     id: '44a65343-7d55-45da-b8da-54c52909a1d9', subject: 'Dúvida sobre o pedido #4821', status: 'OPEN', priority: 'HIGH',
     channel: 'WHATSAPP', createdAt: timeAgo(0.4), updatedAt: timeAgo(0.04),
@@ -144,7 +144,6 @@ export async function demoTicket(ticketId: string) {
 }
 
 export async function demoMetrics(): Promise<TicketMetrics> {
-  const active = tickets.filter((ticket) => ticket.status !== 'CLOSED');
   return wait({
     period: { from: timeAgo(24 * 30), to: new Date(now).toISOString() },
     averageFirstResponseSeconds: 194,

@@ -5,7 +5,7 @@ Monorepo da plataforma SaaS de atendimento omnichannel, automações e agentes d
 ## Requisitos locais
 
 - Node.js 24 (faixa aceita pelo repositório: `>=24.0.0 <25`)
-- Corepack habilitado para ativar a versão de pnpm definida em `package.json`
+- Corepack para ativar a versão de pnpm definida em `package.json`
 - Docker será necessário quando os serviços locais forem introduzidos na fase de infraestrutura
 
 ## Organização
@@ -30,15 +30,21 @@ Monorepo da plataforma SaaS de atendimento omnichannel, automações e agentes d
 Os comandos de raiz delegam tarefas aos pacotes pelo Turborepo:
 
 ```sh
+corepack enable
 corepack pnpm install
 corepack pnpm dev
 corepack pnpm lint
 corepack pnpm typecheck
 corepack pnpm test
 corepack pnpm build
+corepack pnpm check
 ```
 
-Cada aplicação ou pacote implementável declara seus próprios scripts. Os diretórios marcados como “a iniciar” registram os limites da arquitetura; eles passam a participar das tarefas do Turborepo quando seus projetos executáveis forem adicionados nas fases correspondentes.
+`check` roda lint, TypeScript, validação do schema Prisma, testes unitários, build e smoke tests de navegador. A API usa Jest; o frontend usa Jest e Playwright. Instale Chromium para rodar os e2e localmente com `corepack pnpm exec playwright install chromium`.
+
+Cada aplicação ou pacote implementável declara seus próprios scripts e é incluído nas tarefas do Turborepo. Os diretórios marcados como “a iniciar” não participam até receberem manifestos e scripts executáveis. A pipeline em `.github/workflows/ci.yml` repete `pnpm check`, aplica migrations em PostgreSQL descartável e mantém artefatos de diagnóstico do Playwright em falhas.
+
+Consulte o [guia de qualidade e fluxo de features](docs/development/quality-and-feature-workflow.md) antes de implementar uma alteração. A cobertura atual da API ainda não atinge a meta histórica de 80%; o guia registra o baseline medido e o gate de regressão.
 
 ## Fases
 

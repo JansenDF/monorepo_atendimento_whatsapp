@@ -8,6 +8,8 @@ dist/
 build/
 coverage/
 *.tsbuildinfo
+apps/frontend/test-results/
+apps/frontend/playwright-report/
 
 # Local environment and secrets
 .env

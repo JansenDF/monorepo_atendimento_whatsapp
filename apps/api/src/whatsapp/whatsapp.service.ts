@@ -1021,6 +1021,7 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
   }
 
   private safeFileName(provided: string | null, mediaId: string, mimeType: string): string {
+    // eslint-disable-next-line no-control-regex -- ASCII control characters are unsafe in filenames.
     const cleaned = provided?.replace(/[\\/\u0000-\u001f]/g, '_').slice(0, 240);
     if (cleaned) return cleaned;
     const extension = mimeType.split('/')[1]?.replace(/[^a-z0-9.+-]/gi, '') || 'bin';
