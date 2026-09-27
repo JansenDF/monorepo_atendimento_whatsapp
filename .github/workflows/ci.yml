@@ -53,7 +53,7 @@ jobs:
         run: pnpm --filter @whatsapp/api db:migrate:deploy
 
       - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm --filter @whatsapp/frontend exec playwright install --with-deps chromium
 
       - name: Run lint, typecheck, schema validation, tests, build and browser smoke tests
         run: pnpm check
