@@ -4,6 +4,7 @@ export interface ValidatedEnvironment extends Record<string, unknown> {
   NODE_ENV: RuntimeEnvironment;
   PORT: number;
   DATABASE_URL: string;
+  REDIS_URL?: string;
   JWT_ACCESS_SECRET?: string;
 }
 
@@ -55,6 +56,21 @@ export function validateEnvironment(
     }
   }
 
+  const rawRedisUrl = source.REDIS_URL;
+  const redisUrl = typeof rawRedisUrl === 'string' ? rawRedisUrl.trim() : '';
+  if (!redisUrl && nodeEnv !== 'test') {
+    errors.push('REDIS_URL is required for the Socket.IO Redis adapter');
+  } else if (redisUrl) {
+    try {
+      const parsed = new URL(redisUrl);
+      if (!['redis:', 'rediss:'].includes(parsed.protocol) || !parsed.hostname) {
+        errors.push('REDIS_URL must be a Redis connection URL');
+      }
+    } catch {
+      errors.push('REDIS_URL must be a valid URL');
+    }
+  }
+
   const graphApiVersion = source.WHATSAPP_GRAPH_API_VERSION;
   if (
     graphApiVersion !== undefined && graphApiVersion !== '' &&
@@ -96,6 +112,7 @@ export function validateEnvironment(
     NODE_ENV: nodeEnv,
     PORT: port,
     DATABASE_URL: databaseUrl,
+    ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     ...(typeof jwtAccessSecret === 'string' && jwtAccessSecret.length > 0
       ? { JWT_ACCESS_SECRET: jwtAccessSecret }
       : {}),

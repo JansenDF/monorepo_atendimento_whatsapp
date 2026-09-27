@@ -86,6 +86,9 @@ describe('WhatsApp inbound ticket lifecycle', () => {
     expect(transaction.outboxEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ eventType: 'ticket.created' }) }),
     );
+    expect(transaction.outboxEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ eventType: 'message.received' }) }),
+    );
   });
 
   it('reopens a pending ticket when its WhatsApp customer replies', async () => {

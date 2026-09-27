@@ -131,7 +131,7 @@ describe('PrismaTicketRepository', () => {
       }),
     );
     expect(transaction.outboxEvent.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ eventType: 'ticket.status_changed' }) }),
+      expect.objectContaining({ data: expect.objectContaining({ eventType: 'ticket.closed' }) }),
     );
   });
 

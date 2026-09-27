@@ -15,5 +15,6 @@ import { TICKET_REPOSITORY } from './ticket.types';
     JwtAccessGuard,
     RolesGuard,
   ],
+  exports: [TicketService],
 })
 export class TicketsModule {}

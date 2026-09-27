@@ -3,6 +3,7 @@ import { validateEnvironment } from '../src/config/environment';
 describe('validateEnvironment', () => {
   const validSource = {
     DATABASE_URL: 'postgresql://user:password@localhost:5432/support?schema=public',
+    REDIS_URL: 'redis://localhost:6379',
   };
 
   it('applies safe runtime defaults and parses PORT as a number', () => {
@@ -20,7 +21,7 @@ describe('validateEnvironment', () => {
   });
 
   it('rejects invalid ports and missing database URLs without exposing values', () => {
-    expect(() => validateEnvironment({ PORT: '70000', DATABASE_URL: '' })).toThrow(
+    expect(() => validateEnvironment({ ...validSource, PORT: '70000', DATABASE_URL: '' })).toThrow(
       'PORT must be an integer between 1 and 65535; DATABASE_URL is required',
     );
   });

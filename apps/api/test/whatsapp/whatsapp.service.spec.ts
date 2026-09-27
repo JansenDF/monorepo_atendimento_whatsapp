@@ -33,7 +33,13 @@ describe('WhatsappService outbound persistence', () => {
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn().mockResolvedValue({ id: messageId }),
       },
+      outboxEvent: { create: jest.fn().mockResolvedValue({ id: 'outbox-id' }) },
     } as unknown as PrismaService;
+    const transaction = {
+      message: prisma.message,
+      outboxEvent: prisma.outboxEvent,
+    };
+    prisma.$transaction = jest.fn((callback: (tx: typeof transaction) => unknown) => callback(transaction)) as unknown as typeof prisma.$transaction;
     const cloudApi = { sendMessage } as unknown as WhatsappCloudApiClient;
     const credentials = {
       decrypt: jest.fn().mockReturnValue({ accessToken: 'secret-token' }),
@@ -67,6 +73,9 @@ describe('WhatsappService outbound persistence', () => {
     );
     expect(prisma.message.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ providerMessageId: 'wamid.outbound' }) }),
+    );
+    expect(prisma.outboxEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ eventType: 'message.sent' }) }),
     );
   });
 

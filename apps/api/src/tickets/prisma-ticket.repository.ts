@@ -149,7 +149,7 @@ export class PrismaTicketRepository implements TicketRepository {
       await this.enqueueTicketEvent(transaction, {
         companyId: input.ticket.companyId,
         ticketId: input.ticket.id,
-        eventType: 'ticket.status_changed',
+        eventType: input.nextStatus === 'CLOSED' ? 'ticket.closed' : 'ticket.status_changed',
         payload: {
           ticketId: input.ticket.id,
           previousStatus: input.ticket.status,

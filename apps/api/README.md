@@ -4,7 +4,7 @@ Aplicação NestJS. É responsável por interfaces externas, autorização e com
 
 ## Desenvolvimento local
 
-1. Use Node.js 24, copie `.env.example` para `.env` e ajuste `DATABASE_URL`.
+1. Use Node.js 24, copie `.env.example` para `.env`, ajuste `DATABASE_URL` e inicie PostgreSQL e Redis localmente.
 2. Execute `corepack pnpm install` na raiz.
 3. Execute `corepack pnpm --filter @whatsapp/api db:migrate:dev` para criar/aplicar migrations em um banco local.
 4. Execute `corepack pnpm --filter @whatsapp/api dev`.
@@ -72,3 +72,33 @@ lost; the message stays `QUEUED` with an `OUTCOME_UNKNOWN` marker so a later
 status webhook can reconcile it without creating a duplicate send.
 
 Apply the additive migration with `pnpm --filter @whatsapp/api db:migrate:deploy`.
+
+## Socket.IO em tempo real
+
+O `ChatGateway` autentica o handshake com o mesmo JWT HS256 usado pelas rotas REST
+(`auth.token` ou `Authorization: Bearer ...`) e recarrega usuário, empresa, papéis
+e departamentos no PostgreSQL. A conexão entra somente na sala da própria empresa.
+`ticket:join` valida o acesso ao ticket antes de entrar na sala da conversa;
+`ticket:leave` remove a inscrição. `ticket.created`, `message.received`,
+`message.sent`, `message.status_changed`, `ticket.closed` e `ticket.status_changed`
+levam apenas os IDs do ticket e, quando aplicável, da mensagem na sala autorizada
+do ticket. A sala da empresa recebe `tickets.changed` para atualizar listas; na
+criação, recebe `ticket.created`. O corpo e o histórico são obtidos pelas rotas
+REST, que continuam aplicando o isolamento por empresa e as permissões.
+
+Os eventos são gravados em `outbox_events` junto com a transação de criação da
+mensagem ou alteração do ticket. Cada instância reivindica lotes com
+`FOR UPDATE SKIP LOCKED`, publica através do Redis Adapter e aplica retry com
+backoff; eventos sem suporte são marcados como publicados sem broadcast. Isso
+permite que várias instâncias da API compartilhem salas e entrega de eventos.
+Configure `REDIS_URL` em todos os ambientes. O processo falha no startup se não
+conseguir conectar ao Redis. Configure `FRONTEND_ORIGINS` como uma lista de
+origens separadas por vírgula para Socket.IO.
+
+O navegador reconecta indefinidamente com backoff e revalida as queries ao
+conectar novamente. O polling das queries de tickets continua ativo para
+reconciliação quando o navegador esteve desconectado. Em deployments com
+balanceamento que mantenham o long-polling do Socket.IO habilitado, configure
+afinidade de sessão no load balancer; o Redis Adapter distribui broadcasts,
+mas não substitui essa afinidade. Também permita conexões WebSocket e o tráfego
+entre as instâncias e o Redis.

@@ -4,11 +4,32 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { ConfigService } from '@nestjs/config';
+import { RedisIoAdapter } from './realtime/redis-io.adapter';
+
+type CorsOrigin = (
+  requestOrigin: string | undefined,
+  callback: (error: Error | null, origin?: boolean | string | RegExp | (string | RegExp)[]) => void,
+) => void;
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
   const config = app.get(ConfigService);
+  const socketAdapter = new RedisIoAdapter(app, config);
+  await socketAdapter.connectToRedis();
+  app.useWebSocketAdapter(socketAdapter);
+  const allowedOrigins = (config.get<string>('FRONTEND_ORIGINS') ?? 'http://localhost:3000')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const isAllowedOrigin: CorsOrigin = (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+    else callback(new Error('Origin is not allowed'));
+  };
+  app.enableCors({
+    origin: isAllowedOrigin,
+    credentials: true,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -21,7 +42,12 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.enableShutdownHooks();
 
-  await app.listen(config.getOrThrow<number>('PORT'), '0.0.0.0');
+  try {
+    await app.listen(config.getOrThrow<number>('PORT'), '0.0.0.0');
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 }
 
 void bootstrap().catch((error: unknown) => {

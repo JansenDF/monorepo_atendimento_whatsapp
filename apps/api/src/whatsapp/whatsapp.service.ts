@@ -469,18 +469,30 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
       throw error;
     }
 
-    // A fast webhook can move QUEUED to DELIVERED before this request returns.
-    // Only advance a still-queued row to SENT, then attach the response ID.
-    await this.prisma.message.updateMany({
-      where: { id: message.id, companyId: input.companyId, status: 'QUEUED' },
-      data: { status: 'SENT' },
-    });
-    await this.prisma.message.update({
-      where: { id_companyId: { id: message.id, companyId: input.companyId } },
-      data: {
-        providerMessageId: result.providerMessageId,
-        metadata: { integrationId: integration.id, sendAttempts: result.attempts, ...outboundMetadata },
-      },
+    // Persist the successful send event atomically with the final provider ID.
+    // A fast webhook may already have advanced QUEUED to DELIVERED or READ.
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.message.updateMany({
+        where: { id: message.id, companyId: input.companyId, status: 'QUEUED' },
+        data: { status: 'SENT' },
+      });
+      await transaction.message.update({
+        where: { id_companyId: { id: message.id, companyId: input.companyId } },
+        data: {
+          providerMessageId: result.providerMessageId,
+          metadata: { integrationId: integration.id, sendAttempts: result.attempts, ...outboundMetadata },
+        },
+      });
+      await transaction.outboxEvent.create({
+        data: {
+          companyId: input.companyId,
+          aggregateType: 'message',
+          aggregateId: message.id,
+          eventType: 'message.sent',
+          idempotencyKey: `message.sent:${message.id}`,
+          payload: { ticketId: ticket.id, messageId: message.id },
+        },
+      });
     });
     return { messageId: message.id, providerMessageId: result.providerMessageId };
   }
@@ -645,6 +657,16 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
               },
             },
           });
+          await transaction.outboxEvent.create({
+            data: {
+              companyId: integration.companyId,
+              aggregateType: 'message',
+              aggregateId: newMessage.id,
+              eventType: 'message.received',
+              idempotencyKey: `message.received:${newMessage.id}`,
+              payload: { ticketId: ticket.id, messageId: newMessage.id },
+            },
+          });
           let attachment: { id: string; storageKey: string } | null = null;
           if (inbound.media) {
             const storageKey = `pending/${integration.companyId}/${newMessage.id}/${inbound.media.id}`;
@@ -756,22 +778,37 @@ export class WhatsappService implements OnModuleInit, OnModuleDestroy {
     const errorCode = firstError
       ? stringValue(firstError.code) ?? (typeof firstError.code === 'number' ? String(firstError.code) : null)
       : null;
-    const update = await this.prisma.message.updateMany({
-      where: {
-        id: message.id,
-        companyId,
-        status: { in: allowedPriorStatuses(nextStatus) },
-      },
-      data: {
-        status: nextStatus,
-        providerMessageId,
-        metadata: {
-          ...((isRecord(message.metadata) ? message.metadata : {}) as Prisma.InputJsonObject),
-          lastProviderStatus: status,
-          providerStatusTimestamp: stringValue(rawStatus.timestamp),
-          ...(errorCode ? { providerErrorCode: errorCode } : {}),
+    const update = await this.prisma.$transaction(async (transaction) => {
+      const changed = await transaction.message.updateMany({
+        where: {
+          id: message.id,
+          companyId,
+          status: { in: allowedPriorStatuses(nextStatus) },
         },
-      },
+        data: {
+          status: nextStatus,
+          providerMessageId,
+          metadata: {
+            ...((isRecord(message.metadata) ? message.metadata : {}) as Prisma.InputJsonObject),
+            lastProviderStatus: status,
+            providerStatusTimestamp: stringValue(rawStatus.timestamp),
+            ...(errorCode ? { providerErrorCode: errorCode } : {}),
+          },
+        },
+      });
+      if (changed.count === 1) {
+        await transaction.outboxEvent.create({
+          data: {
+            companyId,
+            aggregateType: 'message',
+            aggregateId: message.id,
+            eventType: 'message.status_changed',
+            idempotencyKey: `message.status_changed:${message.id}:${nextStatus}`,
+            payload: { ticketId: message.ticketId, messageId: message.id },
+          },
+        });
+      }
+      return changed;
     });
     if (update.count === 0 && !message.providerMessageId) {
       await this.prisma.message.updateMany({
